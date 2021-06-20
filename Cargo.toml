@@ -4,7 +4,7 @@ version = "0.2.0"
 authors = ["Diego Lima <lima.ds@outlook.com>"]
 edition = "2018"
 license = "MIT"
-keywords = ["statistics", "probability", "inference"]
+keywords = ["dsp"]
 categories = ["science"]
 build = "build.rs"
 publish = ["crates-io"]
@@ -12,3 +12,11 @@ readme = "README.md"
 description = "General-purpose DSP data structures and algorithms"
 
 [dependencies]
+nalgebra = { version = "0.26.2", features = ["serde-serialize", "sparse"] }
+simba="0.4.0"
+num-traits = "0.2.14"
+serde = { version="1.0.111", features=["derive"] }
+
+[features]
+mkl=[]
+ipp=[]
