@@ -7,8 +7,8 @@ use nalgebra::storage::*;
 // use super::dwt1d::gsl::*;
 use std::ops::{Mul, MulAssign, Index, };
 use crate::dwt::*;
+use std::iter::FromIterator;
 
-#[cfg(feature="ipp")]
 pub mod ipp;
 
 // pub mod iter;
@@ -17,7 +17,147 @@ pub mod ipp;
 
 /// Two-dimensional wavelet decomposition
 pub struct Wavelet2D {
-    // plan : DWTPlan
+    states : Vec<ipp::IppDWT2D>,
+    coefs : Vec<([f32; 4], [f32; 4])>,
+    basis : Basis,
+    img_side : usize
+}
+
+impl Wavelet2D {
+
+    pub fn new(basis : Basis, img_side : usize, n_levels : usize) -> Self {
+        let coefs = basis.taps(n_levels);
+        let mut states = Vec::new();
+        for i in 0..n_levels {
+            let state = unsafe {
+                ipp::build_dwt2d_state(&coefs[i].0[..], &coefs[i].1[..])
+            };
+            states.push(state);
+        }
+        Self { states, coefs, basis, img_side }
+    }
+
+    pub fn forward_mut(&self, src : &impl AsRef<[f32]>, dst : &mut Pyramid<f32>) {
+        assert!(self.states.len() == dst.levels.len());
+        unsafe {
+            for i in 0..self.states.len() {
+                let (coarse, detail_x, detail_y, detail_xy) = dst.full_level_mut(i);
+                ipp::apply_forward(
+                    self.states[i].spec_fwd,
+                    self.states[i].buf_fwd,
+                    src.as_ref(),
+                    self.img_side,
+                    self.basis.len(),
+                    coarse,
+                    detail_x,
+                    detail_y,
+                    detail_xy
+                );
+            }
+        }
+    }
+
+    pub fn backward_mut(&self, src : &Pyramid<f32>, dst : &mut AsMut<[f32]>) {
+        assert!(self.states.len() == src.levels.len());
+        unsafe {
+            for i in 0..self.states.len() {
+                let (coarse, detail_x, detail_y, detail_xy) = src.full_level(i);
+                ipp::apply_backward(
+                    self.states[i].spec_bwd,
+                    self.states[i].buf_bwd,
+                    dst.as_mut(),
+                    self.img_side,
+                    self.basis.len(),
+                    &coarse[..],
+                    &detail_x[..],
+                    &detail_y[..],
+                    &detail_xy[..]
+                );
+            }
+        }
+    }
+
+}
+
+pub struct PyramidLevel<N> {
+    detail_x : Vec<N>,
+    detail_y : Vec<N>,
+    detail_xy : Vec<N>,
+    coarse : Vec<N>,
+    side_len : usize
+}
+
+impl<N> PyramidLevel<N>
+where
+    N : From<f32> + Scalar + Clone
+{
+
+    pub fn new(side_len : usize, filt_len : usize) -> Self {
+        let half_len = side_len / 2;
+        let dst_len = (half_len - filt_len / 2) as usize;
+        let mut coarse = Vec::from_iter((0..dst_len.pow(2u32)).map(|_| N::from(0.0) ));
+        let mut detail_x = coarse.clone();
+        let mut detail_y = coarse.clone();
+        let mut detail_xy = coarse.clone();
+        Self {
+            detail_x,
+            detail_y,
+            detail_xy,
+            coarse,
+            side_len
+        }
+    }
+
+}
+
+pub struct Pyramid<N>
+where
+    N : From<f32> + Scalar + Clone
+{
+    levels : Vec<PyramidLevel<N>>
+}
+
+impl<N> Pyramid<N>
+where
+    N : From<f32> + Scalar + Clone
+{
+
+    pub fn horizontal_mut(&mut self, level : usize) -> &mut [N] {
+        &mut self.levels[level].detail_x[..]
+    }
+
+    pub fn vertical_mut(&mut self, level : usize) -> &mut [N] {
+        &mut self.levels[level].detail_y[..]
+    }
+
+    pub fn diagonal_mut(&mut self, level : usize) -> &mut [N] {
+        &mut self.levels[level].detail_xy[..]
+    }
+
+    pub fn coarse_mut(&mut self, level : usize) -> &mut [N] {
+        &mut self.levels[level].coarse[..]
+    }
+
+    fn full_level_mut(&mut self, level : usize) -> (&mut [N], &mut [N], &mut [N], &mut [N]) {
+        let level = &mut self.levels[level];
+        (
+            &mut level.coarse[..],
+            &mut level.detail_x[..],
+            &mut level.detail_y[..],
+            &mut level.detail_xy[..]
+        )
+    }
+
+    fn full_level(&self, level : usize) -> (&[N], &[N], &[N], &[N]) {
+        let level = &self.levels[level];
+        (
+            &level.coarse[..],
+            &level.detail_x[..],
+            &level.detail_y[..],
+            &level.detail_xy[..]
+        )
+    }
+
 }
 
 /// Output of a wavelet decomposition. Imgage pyramids are indexed by a (scale, x, y) triplet.

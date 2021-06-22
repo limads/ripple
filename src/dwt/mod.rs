@@ -1,11 +1,13 @@
 #[cfg(feature="ipp")]
 mod dwt1d;
 
+#[cfg(feature="ipp")]
 mod dwt2d;
 
 #[cfg(feature="ipp")]
 pub use dwt1d::*;
 
+#[cfg(feature="ipp")]
 pub use dwt2d::*;
 
 // Filter coefficients were extracted from Tan & Jiang (2019) Digital Signal Processing

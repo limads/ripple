@@ -9,7 +9,8 @@ use std::fmt::{self, Display};
 use serde::Deserialize;
 use std::convert::TryFrom;
 use serde::Deserializer;
-use std::iter::FromIterator;
+use std::iter::{FromIterator, Extend, IntoIterator};
+use std::cmp::PartialEq;
 
 pub mod conv;
 
@@ -220,6 +221,39 @@ where
     fn from_iter<I : IntoIterator<Item=N>>(iter: I) -> Self {
         let buf = DVector::from(Vec::from_iter(iter));
         Self { buf }
+    }
+
+}
+
+impl<N> Extend<N> for Signal<N>
+where
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd + From<f32>,
+    f64 : SubsetOf<N>
+{
+
+    fn extend<T>(&mut self, iter: T)
+    where
+        T: IntoIterator<Item = N>
+    {
+        let mut v = self.buf.data.as_vec().clone();
+        v.extend(iter);
+        self.buf = DVector::from_vec(v);
+    }
+
+}
+
+
+impl<N> IntoIterator for Signal<N>
+where
+    N : Scalar
+{
+    type Item = N;
+
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(mut self) -> Self::IntoIter {
+        let data : Vec<_> = self.buf.data.into();
+        data.into_iter()
     }
 
 }
@@ -528,6 +562,16 @@ where
 pub mod gen {
 
     use super::*;
+
+    pub fn pulse<T>(n : usize) -> Signal<T>
+    where
+        T : From<f32> + Scalar + Div<Output=T> + Copy + Debug
+    {
+        let mut s = flat::<T>(n);
+        let s_slice : &mut [T] = s.as_mut();
+        s_slice[0] = T::from(1.0);
+        s
+    }
 
     pub fn flat<T>(n : usize) -> Signal<T>
     where

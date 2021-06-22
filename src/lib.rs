@@ -1,5 +1,8 @@
 #![doc(html_logo_url = "https://raw.githubusercontent.com/limads/ripple/master/assets/ripple-logo.png")]
 
+//! This crate offers a high-level API to for applications that require
+//! multiresolution analysis algorithms.
+
 pub(crate) mod foreign;
 
 pub mod signal;

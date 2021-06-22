@@ -45,7 +45,7 @@ impl Wavelet {
         unsafe {
             for i in 0..self.states.len() {
                 let (coarse, detail) = dst.coarse_detail_mut(i);
-                println!("{} {}", coarse.len(), detail.len());
+                // println!("{} {}", coarse.len(), detail.len());
                 ipp::apply_custom_filter_fwd(
                     &self.states[i],
                     src.as_ref(),
@@ -70,11 +70,20 @@ impl Wavelet {
         dst
     }*/
 
-    // pub fn backward_mut(&self, src : &Cascade<f32>, dst : &mut impl AsMut<[f32]>) {
-    //    for i in 0..self.states.len() {
-    //        ipp::apply_custom_filter_bwd(&state, low.as_ref(), high.as_ref(), data.as_mut());
-    //    }
-    // }
+    pub fn backward_mut(&self, src : &Cascade<f32>, dst : &mut impl AsMut<[f32]>) {
+        assert!(self.states.len() == src.levels.end);
+        unsafe {
+            for i in 0..self.states.len() {
+                let (coarse, detail) = src.coarse_detail(i);
+                ipp::apply_custom_filter_bwd(
+                    &self.states[i],
+                    coarse.as_ref(),
+                    detail.as_ref(),
+                    dst.as_mut()
+                );
+            }
+        }
+    }
 
     /*pub fn backward_inplace(&self, mut buffer : Pyramid<f64>) -> Signal<f64> {
         if let Err(e) = self.plan.backward_inplace(buffer.as_mut()) {
@@ -153,9 +162,14 @@ where
         &mut self.low[dwt_level_index(n, lvl)]
     }
 
-    pub fn coarse_detail_mut<'a>(&'a mut self, lvl : usize) -> (&'a mut [N], &'a mut [N]) {
+    fn coarse_detail_mut<'a>(&'a mut self, lvl : usize) -> (&'a mut [N], &'a mut [N]) {
         let n = self.low.len();
         (&mut self.low[dwt_level_index(n, lvl)], &mut self.high[dwt_level_index(n, lvl)])
+    }
+
+    fn coarse_detail<'a>(&'a self, lvl : usize) -> (&'a [N], &'a [N]) {
+        let n = self.low.len();
+        (&self.low[dwt_level_index(n, lvl)], &self.high[dwt_level_index(n, lvl)])
     }
 
     pub fn detail_iter<'a>(&'a self) -> impl Iterator<Item=&'a [N]> {
