@@ -109,10 +109,12 @@ where
     }
 
     pub fn epoch(&'a self, start : usize, len : usize) -> Epoch<'a, N> {
+        assert!(start + len <= self.buf.nrows());
         Epoch{ slice : self.buf.rows(start, len), offset : start }
     }
 
     pub fn epoch_mut(&'a mut self, start : usize, len : usize) -> EpochMut<'a, N> {
+        assert!(start + len <= self.buf.nrows());
         EpochMut{ slice : self.buf.rows_mut(start, len), offset : start }
     }
 
@@ -398,6 +400,10 @@ where
         Self { slice : DVectorSlice::from(&self.slice.as_slice()[pos..pos+len]), offset : self.offset + pos }
     }
 
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
 }
 
 /*impl<'a, M, N> Downsample<Signal<N>> for Epoch<'a, M>
@@ -601,6 +607,23 @@ pub mod gen {
         Signal {
             buf : step_vec
         }
+    }
+
+    pub fn step2d<T>(side : usize) -> Signal<T>
+    where
+        T : Scalar + Copy + MulAssign + AddAssign + Add<Output=T> + Mul<Output=T> + SubAssign + Field + SimdPartialOrd + From<f32>,
+        f64 : SubsetOf<T>
+    {
+        let half_len = side / 2;
+        let mut img = flat::<T>(side);
+        for i in 0..(side-1) {
+            if i <= (half_len-1) {
+                img.extend(flat(side));
+            } else {
+                img.extend(step(side));
+            }
+        }
+        img
     }
 
 }

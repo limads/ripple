@@ -156,3 +156,10 @@ pub(crate) mod ipputils {
     }
 
 }
+
+pub(crate) fn display_as_mat(s : &[f32], ncols : usize) -> String {
+    use nalgebra::DMatrix;
+    format!("{:.4}", DMatrix::from_iterator(ncols, s.len() / ncols, s.iter().cloned()).transpose() )
+}
+
+

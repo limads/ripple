@@ -4,8 +4,9 @@ use nalgebra::storage::*;
 use crate::signal::*;
 use std::cell::RefCell;
 use std::iter::FromIterator;
-use crate::dwt::Basis;
+use crate::dwt::*;
 use std::ops::Range;
+use std::fmt::Debug;
 
 // Utilities for iterating over the levels of a wavelet transform.
 // pub mod iter;
@@ -18,8 +19,10 @@ mod ipp;
 /// Wavelet transform.
 pub struct Wavelet {
     states : Vec<ipp::IppDWT>,
-    coefs : Vec<([f32; 4], [f32; 4])>,
-    basis : Basis
+    /*coefs : Vec<([f32; 4], [f32; 4])>,*/
+    basis : Basis,
+    sz : usize,
+    bwd_cascade : RefCell<Cascade<f32>>
 }
 
 unsafe impl Send for Wavelet { }
@@ -29,30 +32,52 @@ unsafe impl Sync for Wavelet { }
 impl Wavelet {
 
     pub fn new(basis : Basis, mut sz : usize, n_levels : usize) -> Result<Self, &'static str> {
-        let coefs = basis.taps(n_levels);
+        assert!(n_levels >= 1 && n_levels <= basis.len());
+        let (low, high) = basis.coefficients();
         let mut states = Vec::new();
         for i in 0..n_levels {
             let state = unsafe {
-                ipp::build_dwt_state(ipp::DWTSrcType::Float, &coefs[i].0[..], &coefs[i].1[..])
+                ipp::build_dwt_state(ipp::DWTSrcType::Float, &low[..], &high[..])
             };
             states.push(state);
         }
-        Ok(Self { states, coefs, basis })
+        let bwd_cascade = RefCell::new(Cascade::new(basis, sz, Some(states.len())));
+        Ok(Self { states, /*coefs,*/ basis, sz, bwd_cascade })
+    }
+
+    pub fn empty_cascade(&self) -> Cascade<f32> {
+        Cascade::new(self.basis, self.sz, Some(self.states.len()))
     }
 
     pub fn forward_mut(&self, src : &impl AsRef<[f32]>, dst : &mut Cascade<f32>) {
-        assert!(self.states.len() == dst.levels.end);
+        assert!(self.states.len() == dst.levels.len());
         unsafe {
             for i in 0..self.states.len() {
-                let (coarse, detail) = dst.coarse_detail_mut(i);
-                // println!("{} {}", coarse.len(), detail.len());
-                ipp::apply_custom_filter_fwd(
-                    &self.states[i],
-                    src.as_ref(),
-                    coarse,
-                    detail,
-                    self.basis.len()
-                );
+                if i == 0 {
+                    let curr_lvl = &mut dst.levels[i];
+
+                    // println!("src len = {}; dst len = {}", src.as_ref().len(), curr_lvl.detail.len());
+                    super::verify_dwt1d_dimensions(src.as_ref(), &curr_lvl.coarse[..], &curr_lvl.detail[..]);
+                    ipp::apply_custom_filter_fwd(
+                        &self.states[i],
+                        src.as_ref(),
+                        &mut curr_lvl.coarse[..],
+                        &mut curr_lvl.detail[..],
+                        self.basis.len()
+                    );
+                } else {
+                    let (prev_lvl, curr_lvl) = dst.level_pair_mut(i);
+
+                    // println!("src len = {}; dst len = {}", src.as_ref().len(), curr_lvl.detail.len());
+                    super::verify_dwt1d_dimensions(&prev_lvl.coarse[..], &curr_lvl.coarse[..], &curr_lvl.detail[..]);
+                    ipp::apply_custom_filter_fwd(
+                        &self.states[i],
+                        &prev_lvl.coarse[..],
+                        &mut curr_lvl.coarse[..],
+                        &mut curr_lvl.detail[..],
+                        self.basis.len()
+                    );
+                }
             }
         }
     }
@@ -71,16 +96,28 @@ impl Wavelet {
     }*/
 
     pub fn backward_mut(&self, src : &Cascade<f32>, dst : &mut impl AsMut<[f32]>) {
-        assert!(self.states.len() == src.levels.end);
+        assert!(self.states.len() == src.levels.len());
+        let mut bwd_cascade = self.bwd_cascade.borrow_mut();
         unsafe {
-            for i in 0..self.states.len() {
-                let (coarse, detail) = src.coarse_detail(i);
-                ipp::apply_custom_filter_bwd(
-                    &self.states[i],
-                    coarse.as_ref(),
-                    detail.as_ref(),
-                    dst.as_mut()
-                );
+            for i in (0..self.states.len()).rev().skip(1) {
+                if i == 0 {
+                    let curr_lvl = &bwd_cascade.levels[0];
+                    ipp::apply_custom_filter_bwd(
+                        &self.states[i],
+                        curr_lvl.coarse.as_ref(),
+                        curr_lvl.detail.as_ref(),
+                        dst.as_mut()
+                    );
+                } else {
+                    let prev_lvl = &src.levels[i];
+                    let curr_lvl = &mut bwd_cascade.levels[i];
+                    ipp::apply_custom_filter_bwd(
+                        &self.states[i],
+                        prev_lvl.coarse.as_ref(),
+                        prev_lvl.detail.as_ref(),
+                        curr_lvl.coarse.as_mut()
+                    );
+                }
             }
         }
     }
@@ -118,15 +155,45 @@ impl Iterator<Item=Scale<'a>> for ScaleIter {
     curr : usize
 }*/
 
+#[derive(Clone, Debug)]
+pub struct CascadeLevel<N>
+    where N : Scalar
+{
+    coarse : Vec<N>,
+    detail : Vec<N>
+}
+
+impl<N> CascadeLevel<N>
+where
+    N : From<f32> + Scalar
+{
+
+    pub fn new(len : usize, filt_len : usize) -> Self {
+        let half_len = len / 2;
+        let mut coarse = Vec::from_iter((0..half_len).map(|_| N::from(0.0) ));
+        let mut detail = coarse.clone();
+        Self {
+            coarse,
+            detail
+        }
+    }
+
+    pub fn coarse(&self) -> &[N] {
+        &self.coarse[..]
+    }
+
+    pub fn detail(&self) -> &[N] {
+        &self.detail[..]
+    }
+}
+
 /// Output of a one-dimensional wavelet transform.
 #[derive(Clone, Debug)]
 pub struct Cascade<N>
 where
-    N : Scalar
+    N : Scalar + Debug
 {
-    low : Vec<N>,
-    high : Vec<N>,
-    levels : Range<usize>
+    levels : Vec<CascadeLevel<N>>
 }
 
 impl<N> Cascade<N>
@@ -134,15 +201,30 @@ where
     N : Scalar + Copy + From<f32>
 {
 
-    pub fn new(n_samples : usize, n_levels : Option<usize>) -> Self {
-        let low = Vec::from_iter((0..n_samples).map(|_| N::from(0.0 as f32) ));
-        let high = low.clone();
-        let n_levels = n_levels.unwrap_or(dwt_max_levels(n_samples));
-        let levels = 0..n_levels;
-        Self{ low, high, levels }
+    pub fn level_pair_mut(&mut self, last : usize) -> (&mut CascadeLevel<N>, &mut CascadeLevel<N>) {
+        index_and_prev_mut(&mut self.levels[..], last)
     }
 
-    pub fn detail<'a>(&'a self, lvl : usize) -> &'a [N] {
+    pub fn new(basis : Basis, len : usize, n_levels : Option<usize>) -> Self {
+        let n_levels = n_levels.unwrap_or(dwt_max_levels(len));
+        let filt_len = basis.len();
+        let levels = (0..n_levels)
+            .map(|lvl| CascadeLevel::new(len / (2usize).pow(lvl as u32), filt_len) )
+            .collect();
+        Self { levels }
+
+        /*let low = Vec::from_iter((0..n_samples).map(|_| N::from(0.0 as f32) ));
+        let high = low.clone();
+        let n_levels = n_levels.unwrap_or(dwt_max_levels(n_samples));
+        let levels = 0..n_levels;*/
+        // Self{ low, high, levels }
+    }
+
+    pub fn levels(&self) -> impl Iterator<Item=&CascadeLevel<N>> {
+        self.levels.iter()
+    }
+
+    /*pub fn detail<'a>(&'a self, lvl : usize) -> &'a [N] {
         let n = self.low.len();
         &self.high[dwt_level_index(n, lvl)]
     }
@@ -165,6 +247,15 @@ where
     fn coarse_detail_mut<'a>(&'a mut self, lvl : usize) -> (&'a mut [N], &'a mut [N]) {
         let n = self.low.len();
         (&mut self.low[dwt_level_index(n, lvl)], &mut self.high[dwt_level_index(n, lvl)])
+    }
+
+    fn prev_coarse_detail_mut<'a>(&'a mut self, lvl : usize) -> (&'a mut [N], &'a mut [N], &'a mut [N]) {
+        assert!(lvl >= 1);
+        /*let n = self.low.len();
+        let low_prev_ix = dwt_level_index(n, lvl-1);
+        let low_curr_ix = dwt_level_index(n, lvl);
+        (&mut self.low[], &mut self.low[], &mut self.high[dwt_level_index(n, lvl)])*/
+        unimplemented!()
     }
 
     fn coarse_detail<'a>(&'a self, lvl : usize) -> (&'a [N], &'a [N]) {
@@ -190,7 +281,7 @@ where
 
     /*pub fn levels<'a>(&'a self) -> impl Iterator<Item=DVectorSlice<'a, N>> {
         DWTIteratorBase::<&'a Pyramid<N>>::new_ref(&self)
-    }
+    }*/
 
     /// Shrinks all coefficients at this level by the given scalar value
     pub fn shrink(&mut self, factor : f64) {
@@ -227,7 +318,7 @@ fn dwt_1d() {
     let names = ["flat", "ramp", "step"];
     let mut data = [gen::flat(64), gen::ramp(64), gen::step(64)];
     let wav = Wavelet::new(Basis::Daubechies(4, false), 64, 1).unwrap();
-    let mut casc = Cascade::new(64, Some(1));
+    let mut casc = wav.empty_cascade();
     unsafe {
         // let wav = bank::DAUB4_LOW;
         // let state = build_dwt_state(DWTSrcType::Float, &wav[..], &bank::advance_level(&wav)[..]);
@@ -292,21 +383,6 @@ where
         Self{ buf : DVector::from_vec(s) }
     }
 }*/
-
-/// Checks if the vector with len given by the argument is a valid DWT argument.
-/// Returns true if it is an integer power of two. Returns false otherwise.
-pub fn is_valid_dwt_len(len : usize) -> bool {
-    len > 1 && (len as f64).log2().fract() == 0.0
-}
-
-pub fn dwt_max_levels(n : usize) -> usize {
-    (n as f32).log2() as usize - 1
-}
-
-fn dwt_level_index(n : usize, lvl : usize) -> Range<usize> {
-    let ix = n / 2*(lvl+1);
-    ix..2*ix
-}
 
 /*impl Forward<Signal<f64>> for Wavelet {
 
