@@ -151,9 +151,9 @@ where
 {
 
     pub fn new(side_len : usize, filt_len : usize) -> Self {
-        let half_len = side_len / 2;
+        // let half_len = side_len / 2;
         // let dst_len = (half_len - filt_len / 2) as usize;
-        let mut coarse = Vec::from_iter((0..half_len.pow(2u32)).map(|_| N::from(0.0) ));
+        let mut coarse = Vec::from_iter((0..side_len.pow(2u32)).map(|_| N::from(0.0) ));
         let mut detail_x = coarse.clone();
         let mut detail_y = coarse.clone();
         let mut detail_xy = coarse.clone();
@@ -200,7 +200,7 @@ where
         let n_levels = n_levels.unwrap_or(dwt_max_levels(side));
         let filt_len = basis.len();
         let levels = (0..n_levels)
-            .map(|lvl| PyramidLevel::new(side / (2usize).pow(lvl as u32), filt_len) )
+            .map(|lvl| PyramidLevel::new(side / (2usize).pow(lvl as u32 + 1), filt_len) )
             .collect();
         Self { levels }
     }

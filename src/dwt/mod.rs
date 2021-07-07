@@ -187,10 +187,12 @@ fn side_len(len : usize) -> usize {
     sq_len as usize
 }
 
-
+/// Gets element at index last-1 and element at index last and return them
+/// as a tuple of mutable references.
 fn index_and_prev_mut<T>(levels : &mut [T], last : usize) -> (&mut T, &mut T) {
-    assert!(last >= 1);
-    let lvls = levels[last-1..last+1].split_at_mut(1);
-    let (prev_lvl, curr_lvl) = (&mut lvls.0[0], &mut lvls.1[1]);
-    (prev_lvl, curr_lvl)
+    assert!(last >= 1 && last <= levels.len() - 1);
+    assert!(levels.len() >= 2);
+    let (curr, prev) = levels[last-1..last+1].split_last_mut().unwrap();
+    assert!(prev.len() == 1);
+    (&mut prev[0], curr)
 }

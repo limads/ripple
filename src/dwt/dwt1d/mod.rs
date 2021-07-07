@@ -169,8 +169,8 @@ where
 {
 
     pub fn new(len : usize, filt_len : usize) -> Self {
-        let half_len = len / 2;
-        let mut coarse = Vec::from_iter((0..half_len).map(|_| N::from(0.0) ));
+        // let half_len = len / 2;
+        let mut coarse = Vec::from_iter((0..len).map(|_| N::from(0.0) ));
         let mut detail = coarse.clone();
         Self {
             coarse,
@@ -209,7 +209,7 @@ where
         let n_levels = n_levels.unwrap_or(dwt_max_levels(len));
         let filt_len = basis.len();
         let levels = (0..n_levels)
-            .map(|lvl| CascadeLevel::new(len / (2usize).pow(lvl as u32), filt_len) )
+            .map(|lvl| CascadeLevel::new(len / (2usize).pow(lvl as u32 + 1), filt_len) )
             .collect();
         Self { levels }
 
