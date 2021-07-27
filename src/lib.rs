@@ -5,6 +5,8 @@
 
 pub(crate) mod foreign;
 
+pub mod conv;
+
 pub mod signal;
 
 pub mod fft;

@@ -12,8 +12,8 @@ readme = "README.md"
 description = "General-purpose DSP data structures and algorithms"
 
 [dependencies]
-nalgebra = { version = "0.26.2", features = ["serde-serialize", "sparse"] }
-simba="0.4.0"
+nalgebra = { version = "0.28.0", features = ["serde-serialize", "sparse"] }
+simba="0.5.1"
 num-traits = "0.2.14"
 serde = { version="1.0.111", features=["derive"] }
 

@@ -11,8 +11,7 @@ use std::convert::TryFrom;
 use serde::Deserializer;
 use std::iter::{FromIterator, Extend, IntoIterator};
 use std::cmp::PartialEq;
-
-pub mod conv;
+use std::ops::Range;
 
 /// Owned time Signal data structure.
 #[derive(Debug, Clone)]
@@ -444,6 +443,31 @@ where
         &self.buf[ix]
     }
 }
+
+impl<'a, N> Index<usize> for Epoch<'a, N>
+where
+    N : Scalar
+{
+
+    type Output = N;
+
+    fn index(&self, ix: usize) -> &N {
+        &self.slice[ix]
+    }
+}
+
+/*impl<'a, N> Index<Range<usize>> for Epoch<'a, N>
+where
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd,
+    f64 : SubsetOf<N>
+{
+
+    type Output = Epoch<'a, N>;
+
+    fn index(&self, ix: Range<usize>) -> Epoch<'a, N> {
+        self.sub_epoch(ix.start, ix.end - ix.start)
+    }
+}*/
 
 impl<N> From<DVector<N>> for Signal<N>
 where
