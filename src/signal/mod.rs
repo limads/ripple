@@ -1,7 +1,6 @@
 use nalgebra::*;
 use nalgebra::storage::*;
 use std::ops::{Index, Mul, Add, AddAssign, MulAssign, Div, SubAssign};
-pub mod sampling;
 use simba::scalar::SubsetOf;
 use simba::scalar::SupersetOf;
 use std::fmt::Debug;
@@ -12,6 +11,8 @@ use serde::Deserializer;
 use std::iter::{FromIterator, Extend, IntoIterator};
 use std::cmp::PartialEq;
 use std::ops::Range;
+
+pub mod sampling;
 
 /// Owned time Signal data structure.
 #[derive(Debug, Clone)]
