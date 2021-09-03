@@ -125,7 +125,7 @@ impl<'a, N, D1, D2> ConvTask<N, D1, D2>
         D1 : Dim,
         D2 : Dim, //+ DimName,
         N : Scalar + Clone + From<f32> + Copy + Debug, //,
-        VecStorage<N,D1,D2> : ContiguousStorage<N, D1, D2>
+        VecStorage<N,D1,D2> : Storage<N, D1, D2> + IsContiguous
         //VecStorage<N,Dynamic,D2> : ContiguousStorage<N, Dynamic, D1>,
 {
 
@@ -133,7 +133,7 @@ impl<'a, N, D1, D2> ConvTask<N, D1, D2>
         &'a mut self,
         data : &Matrix<N,D1,D2,S>
     ) -> Result<&'a mut Matrix<N,D1,D2,VecStorage<N, D1, D2>>, &'static str>
-        where S : ContiguousStorage<N,D1,D2>
+        where S : Storage<N,D1,D2> + IsContiguous
     {
         unsafe {
             let data_ptr = mkl::utils::fetch_ptr(data).0;

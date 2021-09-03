@@ -5,7 +5,7 @@ use std::ffi::CStr;
 use nalgebra::*;
 //use std::mem::MaybeUninit;
 use nalgebra::base::storage::Storage;
-use nalgebra::base::storage::ContiguousStorage;
+use nalgebra::base::storage::IsContiguous;
 use std::fmt::Debug;
 use super::super::*;
 //use nalgebra::storage::*;
@@ -201,6 +201,43 @@ fn build_descriptor(
     }
 }
 
+fn new_fftplan<N : Scalar>(dims : (usize, usize), double_prec : bool) -> Result<FFTPlan<N> /*::<N, /*C*/ >*/, String> {
+
+    /*let dims = match C::try_to_usize() {
+        Some(_) => (sz.0, 0),
+        None => sz
+    };*/
+    // let double_prec = N::is::<f64>();
+    let handle_forward = build_descriptor(dims, false, double_prec)?;
+    let handle_backward = build_descriptor(dims, true, double_prec)?;
+    Ok( FFTPlan::<N /*, C*/ > {
+        dims,
+        handle : handle_forward,
+        handle_backward,
+        n : PhantomData,
+    //    forward_buffer,
+    //    backward_buffer,
+        //forward_calls : 0,
+        //backward_calls : 0
+    })
+}
+
+impl FFTPlan<f32> {
+
+    pub fn new(dims : (usize, usize)) -> Result<FFTPlan<f32>, String> {
+        new_fftplan::<f32>(dims, false)
+    }
+    
+}
+
+impl FFTPlan<f64> {
+
+    pub fn new(dims : (usize, usize)) -> Result<FFTPlan<f64>, String> {
+        new_fftplan::<f64>(dims, true)
+    }
+    
+}
+
 /// S should implement From<f32> and Copy and Zero because we are going to initialize an
 /// output buffer array from a f32 literal. Actually just f32, f64 can
 /// be used by the MKL API.
@@ -220,7 +257,7 @@ impl<N> /*<'a, N, /*C*/ >*/ FFTPlan<N> /*<N, /*C*/ >*/
         self.dims
     }
 
-    pub fn new(dims : (usize, usize)) -> Result<FFTPlan<N> /*::<N, /*C*/ >*/, String> {
+    /*pub fn new(dims : (usize, usize)) -> Result<FFTPlan<N> /*::<N, /*C*/ >*/, String> {
 
         /*let dims = match C::try_to_usize() {
             Some(_) => (sz.0, 0),
@@ -239,7 +276,7 @@ impl<N> /*<'a, N, /*C*/ >*/ FFTPlan<N> /*<N, /*C*/ >*/
             //forward_calls : 0,
             //backward_calls : 0
         })
-    }
+    }*/
 
     /*/// Used internaly by FFTPlanner constructor.
     /// The out buffer should be initialized as an

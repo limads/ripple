@@ -494,7 +494,7 @@ where
 {
     fn into(self) -> Vec<N> {
         let n = self.buf.nrows();
-        unsafe{ self.buf.data.resize(n) }
+        unsafe{ self.buf.data.into() }
     }
 }
 
