@@ -11,6 +11,7 @@ use serde::Deserializer;
 use std::iter::{FromIterator, Extend, IntoIterator};
 use std::cmp::PartialEq;
 use std::ops::Range;
+use num_traits::{Float, Zero};
 
 pub mod sampling;
 
@@ -57,14 +58,58 @@ where
         self.buf.nrows()
     }
 
+    pub fn delayed_clone(&self, n : usize) -> Self {
+        let cloned = self.clone();
+        cloned.delay(n)
+    }
+
+    fn advanced_clone(&self, n :  usize) -> Self {
+        let cloned = self.clone();
+        cloned.advance(n)
+    }
+
     pub fn delay(mut self, n : usize) -> Self {
         self.circ_shift(n, Direction::Delay)
     }
 
-
     pub fn advance(mut self, n : usize) -> Self {
         self.circ_shift(n, Direction::Advance)
     }
+
+    /*
+    pub fn threshold(&self)
+        IppStatus ippsThreshold_16s(const Ipp16s* pSrc, Ipp16s* pDst, int len, Ipp16s level,
+        IppCmpOp relOp );
+    */
+
+    /*
+        pub fn flip()
+    */
+
+    // autocorrelation(.)
+    // The ith autocorrelation sample is the product of the centered signal
+    // with the same centered signal shifted by i.
+
+    // autoregressive(order : usize)
+    // Calculates the autoregressive estimates using the Yule-Walker estimate.
+
+    // Calculate signal distance for each possible signal shift. Returns the
+    // signal shift with the smallest distance.
+    // fn align().
+
+    // Gaussian process or spline-based signal interpolation.
+    // interpolate()
+
+    // Calculates a smooth envelope over rapidly-varying signal regions (e.g. EMG data).
+    // (1) Square each centered sample in the signal
+    // (2) Smooth the squared samples with window of length N
+    // (3) Take the square root of each sample.
+    // The peaks can then be found by template-based or geometrical-based algorithms.
+    // rms_envelope(.)
+
+    // fn template_search
+    // (1) Correlate the signal with a few desired templates (invert the template then convolve)
+    // (2) Take local maxima of the cross-correlation.
 
     /// Advance : Push Signal to origin; Delay : pulls Signal away from origin.
     fn circ_shift(mut self, n : usize, dir : Direction) -> Self {
@@ -95,6 +140,17 @@ where
         }
         self
     }
+
+    /*
+        Convert
+        IppStatus ippsConvert_8s16s(const Ipp8s* pSrc,Ipp16s* pDst, int len );
+    */
+
+    // Divide by signal "energy" (variance).
+    /*pub fn normalize(&mut self) {
+        IppStatus ippsNormalize_32f(const Ipp32f* pSrc, Ipp32f* pDst, int len, Ipp32f vSub,
+        Ipp32f vDiv );
+    }*/
 
     pub fn new_constant(n : usize, value : N) -> Self {
         Self{ buf : DVector::from_element(n, value) }
@@ -293,8 +349,6 @@ where
     slice : DVectorSlice<'a, N>
 }
 
-
-
 #[derive(Debug)]
 pub struct EpochMut<'a, N>
 where
@@ -364,9 +418,181 @@ where
 
 impl<'a, N> Epoch<'a, N>
 where
-    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd,
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd + From<f32> + Float + Zero + Div<Output=N>,
     f64 : SubsetOf<N>
 {
+
+    pub fn std_dev(&self) -> N {
+        self.variance().sqrt()
+    }
+
+    // Applicable to non-floating-point signals, unlike std_dev. Also in the
+    // same units of measurement as the original signal.
+    pub fn abs_dev(&self) -> N {
+        let mean = self.slice.mean();
+        self.slice.iter().map(|s| (*s - mean).abs() ).fold(N::zero(), |acc, s| acc + s )
+    }
+
+    /*// Smith (1997) p. 17
+    pub fn coefficient_variation(&self) -> N {
+        (From::from(1. as f32) / self.snr()) * From::from(100.0 as f32).
+    }*/
+
+    /// Returns mean / stddev
+    pub fn snr(&self) -> N {
+        self.mean() / self.std_dev()
+    }
+
+    /// Returns maximum peak-to-peak amplitude at the signal.
+    pub fn max_amplitude(&self) -> N {
+        let max = self.max();
+        let min = self.min();
+        max.abs() + min.abs()
+    }
+
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Overlap {
+    pub middle : usize,
+    pub last : usize
+}
+
+impl<'a, N> Epoch<'a, N>
+where
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd + From<f32> + std::cmp::PartialOrd,
+    f64 : SubsetOf<N>
+{
+
+    // TODO envelope extraction (hilbert)
+    // TODO slewrate
+
+    // Returns the non-final nonoverlapping epochs, ignoring the signal end.
+    pub fn nonoverlapping_epochs(&'a self, epoch_len : usize) -> Vec<Epoch<'a, N>>
+    where
+        N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd + From<f32>,
+        f64 : SubsetOf<N>
+    {
+        assert!(self.len() % epoch_len == 0);
+        let mut epochs = Vec::new();
+        for ix in 0..(self.len() / epoch_len) {
+            epochs.push(self.sub_epoch(ix*epoch_len, epoch_len));
+        }
+        epochs
+    }
+
+    /// Search the signal for the longest subslice with variance smaller than the
+    /// desired value. At each iteration, reduce the slice length by step_len.
+    pub fn longest_stationary_region(
+        &'a self,
+        min_sz : usize,
+        step_len : usize,
+        max_var : f32
+    ) -> Option<Epoch<'a, N>> {
+        let mut seq_len = self.len();
+        loop {
+            for sub_epoch in self.overlapping_epochs(seq_len) {
+                if sub_epoch.variance() < N::from(max_var) {
+                    return Some(sub_epoch);
+                }
+            }
+            if seq_len as i32 - step_len as i32 > min_sz as i32 {
+                seq_len -= step_len;
+            } else {
+                return None;
+            }
+        }
+        None
+    }
+
+    pub fn overlapping_epochs(&'a self, epoch_len : usize) -> impl Iterator<Item=Epoch<'a, N>> {
+        self.slice.as_slice().windows(epoch_len)
+            .enumerate()
+            .map(move |(ix, win)| {
+                let mut e = Epoch::from(win);
+                e.offset = self.offset + ix ;
+                e
+            })
+    }
+
+    /// Returns a sequence of minimally-overlapping epochs of size len; and the size of the k-1 overlaps
+    /// of all epochs after the first. All samples of the signal will be returned, but samples will be
+    // repeated at the beginning and end of each epoch.
+    pub fn minimally_overlapping_epochs(&'a self, epoch_len : usize) -> (Vec<Epoch<'a, N>>, Overlap)
+    where
+        N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd + From<f32>,
+        f64 : SubsetOf<N>
+    {
+        assert!(self.len() >= epoch_len);
+        let full_len = self.len();
+        let mut gap = self.len() % epoch_len;
+        let mut epochs = Vec::new();
+
+        if self.len() == epoch_len {
+            epochs.push(self.clone());
+            return(epochs, Overlap { middle : 0, last : 0 });
+        }
+
+        if gap == 0 {
+            epochs = self.nonoverlapping_epochs(epoch_len);
+            return(epochs, Overlap { middle : 0, last : 0 });
+        }
+
+        // Number of nonfinal epochs, including the first
+        let mut n_nonfinal_epochs = self.len() / epoch_len;
+
+        // println!("n_nonfinal: {}", n_nonfinal_epochs);
+        // println!("gap: {}", gap);
+
+        let middle_overlap = (epoch_len - gap) / (n_nonfinal_epochs);
+
+        // println!("middle overlap: {}", middle_overlap);
+        let mut offset = 0;
+        for i in 0..n_nonfinal_epochs {
+            let curr_epoch = self.sub_epoch(offset, epoch_len);
+            // println!("Curr epoch: {:?}", curr_epoch);
+            epochs.push(curr_epoch);
+            offset += epoch_len - middle_overlap;
+            // println!("Next offset = {}", offset);
+        }
+        let last_nonfinal_offset = epochs[epochs.len()-1].offset();
+
+        let last_offset = full_len - epoch_len;
+        let last_epoch = self.sub_epoch(last_offset, epoch_len);
+        let last_overlap = (last_nonfinal_offset + epoch_len).saturating_sub(last_epoch.offset());
+        // println!("Last epoch = {:?}", last_epoch);
+        epochs.push(last_epoch);
+        let overlap = Overlap { middle : middle_overlap, last : last_overlap };
+
+        if epochs.len() == 2 {
+            assert!(overlap.middle == overlap.last);
+        }
+
+        // println!("Overlap = {:?}", overlap);
+        // assert!( (n_epochs-1)*epoch_len - gap + epoch_len == s.len() );
+        (epochs, overlap )
+    }
+
+    /// Returns the difference signal, with size (n-1) / k, where k is the size of the window.
+    /// The pth order difference (i.e. for a position signal,
+    /// returns velocity, then acceleration) can be built by recursively calling this function.
+    /// Calling this function equals convolving with the [-1, 0, ... 0, 1] difference filter.
+    pub fn local_difference(&self) -> Signal<N> {
+        let mut diffs = Vec::new();
+        for ix in 1..self.slice.nrows() {
+            diffs.push(self.slice[ix-1] - self.slice[ix]);
+        }
+        Signal::from(diffs)
+    }
+
+    /// Calling this function equals convolving with the (1/k)*[1, 1, ... 1, 1] smoothing filter.
+    pub fn local_average(&self) -> Signal<N> {
+        let mut diffs = Vec::new();
+        for ix in 1..self.slice.nrows() {
+            diffs.push((self.slice[ix-1] + self.slice[ix]) * N::from(0.5));
+        }
+        Signal::from(diffs)
+    }
 
     pub fn max(&self) -> N {
         self.slice.max()
@@ -396,6 +622,11 @@ where
         self.slice.iter()
     }
 
+    /// Returns labeled samples, with indices refering to the indices of the subsampled signal.
+    pub fn labeled_samples(&self, spacing : usize) -> impl Iterator<Item=(usize, &N)> {
+        self.iter().step_by(spacing).enumerate()
+    }
+
     pub fn sub_epoch(&'a self, pos : usize, len : usize) -> Epoch<'a, N> {
         Self { slice : DVectorSlice::from(&self.slice.as_slice()[pos..pos+len]), offset : self.offset + pos }
     }
@@ -404,6 +635,13 @@ where
         self.offset
     }
 
+}
+
+
+#[test]
+fn overlap() {
+    let s = Signal::from_iter((0..33).map(|s| s as f64) );
+    s.full_epoch().minimally_overlapping_epochs(10);
 }
 
 /*impl<'a, M, N> Downsample<Signal<N>> for Epoch<'a, M>
@@ -594,6 +832,7 @@ pub mod gen {
 
     use super::*;
 
+    /// Generate an impulse signal.
     pub fn pulse<T>(n : usize) -> Signal<T>
     where
         T : From<f32> + Scalar + Div<Output=T> + Copy + Debug
@@ -602,6 +841,16 @@ pub mod gen {
         let s_slice : &mut [T] = s.as_mut();
         s_slice[0] = T::from(1.0);
         s
+    }
+
+    /// Generate white noise.
+    pub fn white<T>(n : usize) -> Signal<T>
+    where
+        T : From<f64> + Scalar + Div<Output=T> + Copy + Debug
+    {
+        use bayes::prob::{self, Prior, Distribution};
+        let norm = prob::Normal::prior(0.0, None);
+        (0..n).map(|_| T::from(norm.sample(&mut prob::rand::thread_rng())) ).collect()
     }
 
     pub fn flat<T>(n : usize) -> Signal<T>
@@ -651,6 +900,11 @@ pub mod gen {
         img
     }
 
+    // IppStatus ippsWinBartlett_16s(const Ipp16s* pSrc, Ipp16s* pDst, int len );
+    // IppStatus ippsWinBlackman_16s(const Ipp16s* pSrc, Ipp16s* pDst, int len, Ipp32f alpha );
+    // IppStatus ippsWinHamming_16s(const Ipp16s* pSrc, Ipp16s* pDst, int len );
+    // IppStatus ippsWinHann_16s(const Ipp16s* pSrc, Ipp16s* pDst, int len );
+    // IppStatus ippsWinKaiser_16s(const Ipp16s* pSrc, Ipp16s* pDst, int len, Ipp32f alpha );
 }
 
 impl<T> Add for Signal<T>

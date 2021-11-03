@@ -1,4 +1,6 @@
 use std::ops::Range;
+use crate::signal::*;
+use std::iter::FromIterator;
 
 #[cfg(feature="ipp")]
 mod dwt1d;
@@ -74,7 +76,7 @@ pub mod bank {
 #[test]
 fn advance_level() {
     use crate::dwt::bank::*;
-    println!("{:?} {:?}", derive_diff(&DAUBECHIES), DAUB4_HIGH);
+    // println!("{:?} {:?}", derive_diff(&DAUBECHIES), DAUB4_HIGH);
     /*println!("Original: {:?}", &bank::DAUBECHIES);
     println!("Apply 1: {:?}", bank::derive_diff(&bank::DAUBECHIES));
     println!("Apply 2: {:?}", bank::derive_diff(&bank::derive_diff(&bank::DAUBECHIES)));
@@ -196,3 +198,5 @@ fn index_and_prev_mut<T>(levels : &mut [T], last : usize) -> (&mut T, &mut T) {
     assert!(prev.len() == 1);
     (&mut prev[0], curr)
 }
+
+

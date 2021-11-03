@@ -5,13 +5,16 @@
 
 pub(crate) mod foreign;
 
-pub mod conv;
+pub mod filter;
 
 pub mod signal;
 
 pub mod fft;
 
 pub mod dwt;
+
+/// Feature extraction utilities.
+pub mod event;
 
 pub(crate) fn panic_on_invalid_slices<A, B>(a : &[A], b : &[B]) {
     if a.len() == 0 {

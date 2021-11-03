@@ -625,4 +625,41 @@ where
     }
 }*/
 
+pub fn extend_nonoverlapping_coefs(
+    coefs_zero : &mut Vec<f32>,
+    coefs_one : &mut Vec<f32>,
+    casc : &Cascade<f32>,
+    epochs : &[Epoch<'_, f32>],
+    overlap : &Overlap,
+    epoch_ix : usize
+) {
+    for (lvl_ix, lvl) in casc.levels().enumerate() {
+        let coefs = Vec::from_iter(lvl.detail().iter().cloned());
+        if lvl_ix == 0 {
+            assert!(coefs.len() == 32 );
+        } else {
+            if lvl_ix == 1 {
+                assert!(coefs.len() == 16 );
+            }
+        }
+        let coefs_slice : &[f32] = if epoch_ix == 0 {
+            // Save all coefficient of first epoch
+            &coefs[..]
+        } else {
+            // Save only coefficients for the DWT region which does not overlap with the previous one
+            let level_overlap = if epoch_ix == epochs.len() - 1 {
+                overlap.last
+            } else {
+                overlap.middle
+            };
+            let start_ix = level_overlap / (2 as usize).pow(lvl_ix as u32 + 1);
+            &coefs[start_ix..]
+        };
+        match lvl_ix {
+            0 => coefs_zero.extend(coefs_slice.iter().cloned()),
+            1 => coefs_one.extend(coefs_slice.iter().cloned()),
+            _ => { panic!("Invalid level"); }
+        }
+    }
+}
 

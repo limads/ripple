@@ -5,7 +5,7 @@ use simba::scalar::RealField;
 use std::fmt::Debug;
 use super::*;
 use crate::signal::*;
-use crate::conv::*;
+use crate::filter::*;
 use num_traits::Num;
 use num_traits::Zero;
 use std::ops::MulAssign;
@@ -65,6 +65,26 @@ where
 {
     pub fn new_constant(n : usize, value : Complex<N>) -> Self {
         Self{ buf : DVector::from_element(n, value) }
+    }
+
+    pub fn phase(&self) -> Signal<N> {
+        unimplemented!()
+    }
+
+    pub fn power(&self) -> Signal<N> {
+        unimplemented!()
+    }
+
+    pub fn real(&self) -> Signal<N> {
+        unimplemented!()
+    }
+
+    pub fn imaginary(&self) -> Signal<N> {
+        unimplemented!()
+    }
+
+    pub fn magnitude(&self) -> Signal<N> {
+        unimplemented!()
     }
 }
 
