@@ -481,18 +481,29 @@ where
         epochs
     }
 
-    /// Search the signal for the longest subslice with variance smaller than the
-    /// desired value. At each iteration, reduce the slice length by step_len.
-    pub fn longest_stationary_region(
+
+    /// Search the signal for the longest where the given condition is met.
+    /// At each iteration, reduce the slice length by step_len.
+    pub fn longest_matching_region<F>(
         &'a self,
         min_sz : usize,
         step_len : usize,
-        max_var : f32
-    ) -> Option<Epoch<'a, N>> {
+        condition : F
+    ) -> Option<Epoch<'a, N>>
+    where
+        F : Fn(Epoch<'a, N>)->bool
+    {
+        assert!(min_sz > 2);
+        assert!(step_len > 1);
         let mut seq_len = self.len();
         loop {
             for sub_epoch in self.overlapping_epochs(seq_len) {
-                if sub_epoch.variance() < N::from(max_var) {
+                assert!(sub_epoch.offset() >= self.offset && sub_epoch.len() <= self.len());
+                assert!(sub_epoch.slice.len() == sub_epoch.len());
+                if condition(sub_epoch.clone()) {
+                    let offset_diff = (sub_epoch.offset() - self.offset());
+                    let len_diff = self.len() - sub_epoch.len();
+                    assert!(offset_diff + sub_epoch.len() + (self.end_offset() - sub_epoch.end_offset()) == self.len());
                     return Some(sub_epoch);
                 }
             }
@@ -505,12 +516,22 @@ where
         None
     }
 
+    /// Returns one-past index of underlying buffer corresponding to last sample.
+    pub fn end_offset(&self) -> usize {
+        self.offset() + self.len()
+    }
+
     pub fn overlapping_epochs(&'a self, epoch_len : usize) -> impl Iterator<Item=Epoch<'a, N>> {
         self.slice.as_slice().windows(epoch_len)
             .enumerate()
             .map(move |(ix, win)| {
+                // Create new epoch by converting from slice (offset=0 here)
                 let mut e = Epoch::from(win);
-                e.offset = self.offset + ix ;
+
+                // Update the offset
+                e.offset = self.offset + ix;
+
+                // println!("{:?}", e);
                 e
             })
     }
@@ -615,7 +636,7 @@ where
     }
 
     pub fn len(&'a self) -> usize {
-        self.slice.len()
+        self.slice.nrows()
     }
 
     pub fn iter(&self) -> impl Iterator<Item=&N> {

@@ -69,9 +69,9 @@ pub fn event_search(
                 // dx \in [0.0,1.0]; //dy \in [0.0, 1.0], which allow us to express the slope in radians
                 let dx = (i as f32 - j as f32).abs() / (half_len as f32);
                 let dy = (samples[i].abs() - samples[j].abs()) / (samples[i].abs() + f32::EPSILON);
-                println!("For i = {}", samples[i]);
+                // println!("For i = {}", samples[i]);
 
-                println!("j = {}, dy = {}; dx = {}; dy/dx = {}; atan = {}", samples[j], dy, dx, dy/dx, (dy/dx).atan());
+                // println!("j = {}, dy = {}; dx = {}; dy/dx = {}; atan = {}", samples[j], dy, dx, dy/dx, (dy/dx).atan());
                 if (dy / dx).atan() < slope {
                     is_steep = false;
                     break;
@@ -80,7 +80,7 @@ pub fn event_search(
         }
 
         if highest && is_steep {
-        	println!("Added coef {} at {} to peak set", samples[i], i);
+        	// println!("Added coef {} at {} to peak set", samples[i], i);
             peaks.push((i, samples[i]));
         }
     }
@@ -101,7 +101,7 @@ pub fn event_search(
         // it is within the window defined around peaks[i];
         while j < peaks.len() {
             if peaks[j].0 >= peaks[i].0.saturating_sub(half_len) && peaks[j].0 <= peaks[i].0 + half_len {
-            	println!("Removed coef {} at {} from peak set", samples[j], j);
+            	// println!("Removed coef {} at {} from peak set", samples[j], j);
                 peaks.remove(j);
             } else {
                 j += 1;

@@ -5,6 +5,8 @@ use std::ops::{Mul, AddAssign, Div, DivAssign, Add};
 use num_traits::identities::{Zero, One};
 use std::cmp::{Eq, PartialEq};
 use num_traits::Float;
+use std::any::Any;
+use crate::signal::Signal;
 
 // Native discrete convolution.
 // pub mod native;
@@ -62,20 +64,57 @@ fn baseline_convolution<S : Scalar>(
     }*/
 }
 
-pub trait Convolve {
+/// Trait implemented by types which can be convolved with another instance
+/// of themselves. Self must satisfy clone because the convolve(.) implementation
+/// is provided by calling convolve_mut on a cloned instance.
+pub trait Convolve
+// where
+//    Self : Clone
+{
 
     fn convolve_mut(&self, filter : &Self, out : &mut Self);
+
+    /*fn convolve(&self, filter : &Self) -> Self {
+        let mut out = self.clone();
+        self.convolve_mut(filter, &mut out);
+        out
+    }*/
 
 }
 
 impl<S> Convolve for [S]
 where
-    S : Scalar + Mul<Output = S> + Zero + AddAssign + Copy
+    S : Scalar + Mul<Output = S> + Zero + AddAssign + Copy + Any
 {
 
     fn convolve_mut(&self, filter : &Self, out : &mut Self) {
+
+        #[cfg(feature="mkl")]
+        if (&self[0] as &dyn Any).is::<f32>() {
+            // Dispatch to MKL impl
+        }
+
+        #[cfg(feature="mkl")]
+        if (&self[0] as &dyn Any).is::<f64>() {
+            // Dispatch to MKL impl
+        }
+
         baseline_convolution(self.as_ref(), filter.as_ref(), out.as_mut(), Extension::Ignore);
     }
+}
+
+impl<S> Convolve for Signal<S>
+where
+    S : Scalar + Mul<Output = S> + Zero + AddAssign + Copy + Any
+{
+
+    fn convolve_mut(&self, filter : &Self, out : &mut Self) {
+        let input : &[S] = self.as_ref();
+        let kernel : &[S] = filter.as_ref();
+        let output : &mut [S] = out.as_mut();
+        input.convolve_mut(kernel, output);
+    }
+
 }
 
 /// Common time-domain representations of filters.
