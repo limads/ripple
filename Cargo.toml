@@ -12,11 +12,12 @@ readme = "README.md"
 description = "General-purpose DSP data structures and algorithms"
 
 [dependencies]
-nalgebra = { version = "0.29.0", features = ["serde-serialize", "sparse"] }
-simba="0.6.0"
+nalgebra = { version = "0.30.1", features = ["serde-serialize", "sparse"] }
+simba="0.7.1"
 num-traits = "0.2.14"
-serde = { version="1.0.111", features=["derive"] }
+serde = { version = "1.0.111", features=["derive"] }
 bayes = { path = "../bayes"}
+rustdct = "0.7.0"
 
 [features]
 mkl=[]

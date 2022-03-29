@@ -11,6 +11,8 @@ pub mod signal;
 
 pub mod fft;
 
+pub mod dct;
+
 pub mod dwt;
 
 /// Feature extraction utilities.
