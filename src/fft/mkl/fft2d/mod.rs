@@ -4,7 +4,7 @@ use nalgebra::storage::*;
 use simba::scalar::RealField;
 use std::fmt::Debug;
 use super::*;
-use crate::fft::fft1d::mkl::*;
+use crate::fft::mkl::fft1d::mkl::*;
 use num_traits::Num;
 use simba::scalar::SubsetOf;
 use std::ops::{Index, IndexMut, Mul, Add, AddAssign, MulAssign, SubAssign};

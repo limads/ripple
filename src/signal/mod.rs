@@ -869,9 +869,16 @@ pub mod gen {
     where
         T : From<f64> + Scalar + Div<Output=T> + Copy + Debug
     {
-        use bayes::prob::{self, Prior, Distribution};
-        let norm = prob::Normal::prior(0.0, None);
-        (0..n).map(|_| T::from(norm.sample(&mut prob::rand::thread_rng())) ).collect()
+        // use rand::prelude::*;
+        // the trait `rand::distributions::Distribution<_>` is not implemented for `rand_distr::StandardNormal`
+        use rand::Rng;
+        use rand::distributions::Distribution;
+        let mut rng = rand::thread_rng();
+        /*(0..n).map(|_| {
+            let z : f64 = rng.sample(rand_distr::StandardNormal);
+            T::from(z)
+        }).collect()*/
+        unimplemented!()
     }
 
     pub fn flat<T>(n : usize) -> Signal<T>

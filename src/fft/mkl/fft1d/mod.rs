@@ -5,7 +5,7 @@ use simba::scalar::RealField;
 use std::fmt::Debug;
 use super::*;
 use crate::signal::*;
-use crate::filter::*;
+use crate::conv::*;
 use num_traits::Num;
 use num_traits::Zero;
 use std::ops::MulAssign;

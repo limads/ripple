@@ -1,11 +1,16 @@
 #[cfg(feature="mkl")]
-mod fft1d;
+mod mkl;
 
 #[cfg(feature="mkl")]
-mod fft2d;
+pub use mkl::fft1d::*;
 
 #[cfg(feature="mkl")]
-pub use fft1d::*;
+pub use mkl::fft2d::*;
 
-#[cfg(feature="mkl")]
-pub use fft2d::*;
+#[cfg(not(feature="mkl"))]
+mod rfft;
+
+#[cfg(not(feature="mkl"))]
+pub use rfft::*;
+
+
