@@ -5,6 +5,8 @@
 
 pub(crate) mod foreign;
 
+pub mod resample;
+
 pub mod conv;
 
 pub mod signal;

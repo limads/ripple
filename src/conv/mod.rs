@@ -3,12 +3,49 @@
 use nalgebra::Scalar;
 use std::ops::{Mul, AddAssign, Div, DivAssign, Add};
 use num_traits::identities::{Zero, One};
-use std::cmp::{Eq, PartialEq};
+use std::cmp::{Eq, PartialEq, Ord, PartialOrd};
 use num_traits::Float;
 use std::any::Any;
 use crate::signal::Signal;
+use crate::signal::Epoch;
+use crate::signal::EpochMut;
 
 // pub mod iter;
+
+pub enum Padding {
+
+    // With no padding, circular convolution will use samples from the beginning and end of signal.
+    None,
+
+    // Pad zeros with filter.size / 2 at beginning and end of signal
+    Zero,
+
+    // Pad start with filter.size / 2 by repeating the first sample; and end with repetitions of the
+    // last sample.
+    Repeat,
+
+    // Linearly interpolate the first with the last sample
+    Interpolate
+
+}
+
+pub enum Convolution {
+
+    /// Circular (padded) convolution, with output having the same size as the input. Near the
+    /// front border, circular convolution uses samples from the end of the signal to pad its
+    /// front; and near the end border, it uses samples from the beginning of the signal to
+    /// pad its end. This is valid since the discrete signal is assumed to be a periodic sequence,
+    /// and the finite discrete signal is just one realization of the more generic signal
+    /// s[n % signal_len]. Circular convolution requires both signals of same length, so the
+    /// smaller signal is assumed to be zero-padded.
+    Circular(Padding),
+
+    /// Convolves self with output into a destination with size self.size - filter.size + 1. This
+    /// does not assume periodicity of the signal, but the cost is that the output is not
+    /// defined near the signal borders.
+    Linear
+
+}
 
 /// Trait implemented by types which can be convolved with another instance
 /// of themselves. Self must satisfy clone because the convolve(.) implementation
@@ -20,7 +57,11 @@ pub trait Convolve
 
     type Output;
 
-    fn convolve_mut(&self, filter : &Self, out : &mut Self::Output);
+    type OwnedOutput;
+
+    fn convolve_mut(&self, filter : &Self, conv : Convolution, out : &mut Self::Output);
+
+    fn convolve(&self, filter : &Self, conv : Convolution) -> Self::OwnedOutput;
 
     /*fn convolve(&self, filter : &Self) -> Self::Output {
         let mut out = self.clone();
@@ -37,43 +78,26 @@ pub trait Convolve
 #[cfg(feature = "mkl")]
 pub mod mkl;
 
-/// Convolution behavior at signal boundaries.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Extension {
-
-    // Repeat with the first and last element so ouput.len() == signal.len()
-    Pad,
-
-    // Wraps with first elements so output.len() == signal.len()
-    Wrap,
-
-    // Writes to signal.len() - (kernel.len() - 1 )
-    Ignore
-
-}
-
 /// Baseline implementation using Rust standard library operations.
 fn baseline_convolution<S : Scalar>(
     signal : &[S],
     kernel : &[S],
-    out : &mut [S],
-    ext : Extension
+    out : &mut [S]
 ) where
     S : Scalar + Mul<Output = S> + Zero + AddAssign + Copy
 {
     // out.clear();
 
-    if ext == Extension::Ignore {
-        assert!(out.len() == signal.len() - (kernel.len() - 1));
-    }
+    //if ext == Extension::Ignore {
+    assert!(out.len() == signal.len() - kernel.len() + 1);
+    //}
 
     let k_len = kernel.len();
     signal.windows(k_len).enumerate().for_each(|(w_ix, win)| {
-        let mut dot = S::zero();
+        out[w_ix] = S::zero();
         for s_ix in 0..k_len {
-            dot += win[s_ix] * kernel[k_len-s_ix-1];
+            out[w_ix] += win[s_ix] * kernel[k_len-s_ix-1];
         }
-        out[w_ix] = dot;
     });
 
     /*match padding {
@@ -111,19 +135,47 @@ where
 
 }*/
 
-impl<S> Convolve for Signal<S>
+// Waiting GAT stabilization
+/*impl<S> Convolve for Signal<S>
 where
-    S : Scalar + Mul<Output = S> + Zero + AddAssign + Copy + Any
+    S : Scalar + Mul<Output = S> + Zero + AddAssign + Copy + Any + PartialOrd
 {
 
-    type Output = Signal<S>;
+    type Output = EpochMut<'_, S>;
+
+    type OwnedOutput = Signal<S>;
 
     fn convolve_mut(&self, filter : &Self, out : &mut Self::Output) {
+        self.full_epoch().convolve_mut(filter.full_epoch(), out)
+    }
+
+    fn convolve(&self, filter : &Self) -> Self::OwnedOutput {
+        self.full_epoch().convolve(filter.full_epoch(), out)
+    }
+}*/
+
+impl<'a, S> Convolve for Epoch<'a, S>
+where
+    S : Scalar + Mul<Output = S> + Zero + AddAssign + Copy + Any + PartialOrd
+{
+
+    type Output = EpochMut<'a, S>;
+
+    type OwnedOutput = Signal<S>;
+
+    fn convolve_mut(&self, filter : &Self, conv : Convolution, out : &mut Self::Output) {
         let input : &[S] = self.as_ref();
         let kernel : &[S] = filter.as_ref();
         let output : &mut [S] = out.as_mut();
-        baseline_convolution(self.as_ref(), filter.as_ref(), out.as_mut(), Extension::Ignore);
+        baseline_convolution(self.as_ref(), filter.as_ref(), out.as_mut());
         // input.convolve_mut(kernel, output);
+    }
+
+    fn convolve(&self, filter : &Self, conv : Convolution) -> Self::OwnedOutput {
+        let out_sz : usize = self.len() as usize - filter.len() as usize + 1usize;
+        let mut out = Signal::<S>::new_constant(out_sz, S::zero());
+        self.convolve_mut(filter, conv, &mut out.full_epoch_mut());
+        out
     }
 
 }

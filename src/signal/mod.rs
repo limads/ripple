@@ -12,6 +12,8 @@ use std::iter::{FromIterator, Extend, IntoIterator};
 use std::cmp::PartialEq;
 use std::ops::Range;
 use num_traits::{Float, Zero};
+use std::borrow::{Borrow, ToOwned};
+use std::ops::IndexMut;
 
 pub mod sampling;
 
@@ -44,11 +46,24 @@ pub enum Direction {
     Delay
 }
 
+
 impl<'a, N> Signal<N>
 where
-    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd + From<f32>,
-    f64 : SubsetOf<N>
+    N : Scalar + Copy
 {
+
+    pub fn new_constant(n : usize, value : N) -> Self {
+        Self{ buf : DVector::from_element(n, value) }
+    }
+
+
+    pub fn full_epoch(&'a self) -> Epoch<'a, N> {
+        Epoch{ slice : self.buf.rows(0, self.buf.nrows()), offset : 0 }
+    }
+
+    pub fn full_epoch_mut(&'a mut self) -> EpochMut<'a, N> {
+        EpochMut{ slice : self.buf.rows_mut(0, self.buf.nrows()), offset : 0 }
+    }
 
     pub fn as_slice(&self) -> &[N] {
         self.as_ref()
@@ -57,6 +72,24 @@ where
     pub fn len(&self) -> usize {
         self.buf.nrows()
     }
+
+    pub fn epoch(&'a self, start : usize, len : usize) -> Epoch<'a, N> {
+        assert!(start + len <= self.buf.nrows());
+        Epoch{ slice : self.buf.rows(start, len), offset : start }
+    }
+
+    pub fn epoch_mut(&'a mut self, start : usize, len : usize) -> EpochMut<'a, N> {
+        assert!(start + len <= self.buf.nrows());
+        EpochMut{ slice : self.buf.rows_mut(start, len), offset : start }
+    }
+
+}
+
+impl<'a, N> Signal<N>
+where
+    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd + From<f32>,
+    f64 : SubsetOf<N>
+{
 
     pub fn delayed_clone(&self, n : usize) -> Self {
         let cloned = self.clone();
@@ -111,7 +144,8 @@ where
     // (1) Correlate the signal with a few desired templates (invert the template then convolve)
     // (2) Take local maxima of the cross-correlation.
 
-    /// Advance : Push Signal to origin; Delay : pulls Signal away from origin.
+    /// Advance : Push Signal to origin; Delay : pulls Signal away from origin. TODO move to Shift
+    /// trait, that is also implemented for images.
     fn circ_shift(mut self, n : usize, dir : Direction) -> Self {
         let mut tmp = Vec::new();
         let sz = self.buf.nrows();
@@ -152,28 +186,6 @@ where
         Ipp32f vDiv );
     }*/
 
-    pub fn new_constant(n : usize, value : N) -> Self {
-        Self{ buf : DVector::from_element(n, value) }
-    }
-
-    pub fn full_epoch(&'a self) -> Epoch<'a, N> {
-        Epoch{ slice : self.buf.rows(0, self.buf.nrows()), offset : 0 }
-    }
-
-    pub fn full_epoch_mut(&'a mut self) -> EpochMut<'a, N> {
-        EpochMut{ slice : self.buf.rows_mut(0, self.buf.nrows()), offset : 0 }
-    }
-
-    pub fn epoch(&'a self, start : usize, len : usize) -> Epoch<'a, N> {
-        assert!(start + len <= self.buf.nrows());
-        Epoch{ slice : self.buf.rows(start, len), offset : start }
-    }
-
-    pub fn epoch_mut(&'a mut self, start : usize, len : usize) -> EpochMut<'a, N> {
-        assert!(start + len <= self.buf.nrows());
-        EpochMut{ slice : self.buf.rows_mut(start, len), offset : start }
-    }
-
     pub fn iter(&self) -> impl Iterator<Item=&N> {
         self.buf.iter()
     }
@@ -190,51 +202,15 @@ where
         self.full_epoch_mut().offset_by(scalar)
     }
 
-    pub fn downsample_aliased(&mut self, src : &Epoch<'_, N>) {
-        let step = src.slice.len() / self.buf.nrows();
-        if step == 1 {
-            sampling::slices::convert_slice(
-                &src.slice.as_slice(),
-                self.buf.as_mut_slice()
-            );
-        } else {
-            let ncols = src.slice.ncols();
-            assert!(src.slice.len() / step == self.buf.nrows(), "Dimension mismatch");
-            sampling::slices::subsample_convert(
-                src.slice.as_slice(),
-                self.buf.as_mut_slice(),
-                ncols,
-                step,
-                false
-            );
-        }
-    }
-
     // Iterate over epochs of same size.
     // pub fn epochs(&self, size : usize) -> impl Iterator<Item=Epoch<'_, N>> {
     //    unimplemented!()
     // }
 
-    /*pub fn downsample_from(&mut self, other : &Self) {
-        unimplemented!()
-    }
-
-    pub fn downsample_into(&self, other : &mut Self) {
-        unimplemented!()
-    }
-
-    pub fn upsample_from(&mut self, other : &Self) {
-        unimplemented!()
-    }
-
-    pub fn upsample_into(&self, other : &mut Self) {
-        unimplemented!()
-    }
-
     // Move this to method of Pyramid.
-    pub fn threshold(&self, thr : &Threshold) -> SparseSignal<'_, N> {
-        unimplemented!()
-    }*/
+    // pub fn threshold(&self, thr : &Threshold) -> SparseSignal<'_, N> {
+    //    unimplemented!()
+    // }
 }
 
 impl<'a, N> From<&'a [N]> for Epoch<'a, N>
@@ -263,11 +239,19 @@ where
 
 impl<N> AsRef<[N]> for Epoch<'_, N>
 where
-    N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd,
-    f64 : SubsetOf<N>
+    N : Scalar + Copy,
 {
     fn as_ref(&self) -> &[N] {
         self.slice.as_slice()
+    }
+}
+
+impl<N> AsMut<[N]> for EpochMut<'_, N>
+where
+    N : Scalar + Copy
+{
+    fn as_mut(&mut self) -> &mut [N] {
+        self.slice.as_mut_slice()
     }
 }
 
@@ -316,29 +300,6 @@ where
 
 }
 
-/*impl<N> Index<(usize, usize)> for Image<N>
-where
-    N : Scalar
-{
-
-    type Output = N;
-
-    fn index(&self, index: (usize, usize)) -> &Self::Output {
-        &self.buf[index]
-    }
-}
-
-impl<N> IndexMut<(usize, usize)> for Image<N>
-where
-    N : Scalar
-{
-
-    fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
-        &mut self.buf[index]
-    }
-
-}*/
-
 /// Borrowed subset of a Signal.
 #[derive(Debug, Clone)]
 pub struct Epoch<'a, N>
@@ -347,6 +308,39 @@ where
 {
     offset : usize,
     slice : DVectorSlice<'a, N>
+}
+
+impl<'a, N> Epoch<'a, N>
+where
+    N : Scalar + Copy
+{
+
+    pub fn clone_owned(&self) -> Signal<N> {
+        // let v : Vecself.slice.clone()
+        unimplemented!()
+    }
+
+    pub fn len(&'a self) -> usize {
+        self.slice.nrows()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=&N> {
+        self.slice.iter()
+    }
+
+    /// Returns labeled samples, with indices refering to the indices of the subsampled signal.
+    pub fn labeled_samples(&self, spacing : usize) -> impl Iterator<Item=(usize, &N)> {
+        self.iter().step_by(spacing).enumerate()
+    }
+
+    pub fn sub_epoch(&'a self, pos : usize, len : usize) -> Epoch<'a, N> {
+        Self { slice : DVectorSlice::from(&self.slice.as_slice()[pos..pos+len]), offset : self.offset + pos }
+    }
+
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
 }
 
 #[derive(Debug)]
@@ -358,11 +352,35 @@ where
     slice : DVectorSliceMut<'a, N>
 }
 
+
+impl<'a, N> EpochMut<'a, N>
+where
+    N : Scalar + Copy {
+
+    pub fn len(&self) -> usize {
+        self.slice.len()
+    }
+
+    pub fn iter_mut(&'a mut self) -> impl Iterator<Item=&'a mut N> {
+        self.slice.iter_mut()
+    }
+
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+}
+
 impl<'a, N> EpochMut<'a, N>
 where
     N : Scalar + Copy + MulAssign + AddAssign + Add<Output=N> + Mul<Output=N> + SubAssign + Field + SimdPartialOrd,
     f64 : SubsetOf<N>
 {
+
+    pub fn clone_owned(&self) -> Signal<N> {
+        // let v : Vecself.slice.clone()
+        unimplemented!()
+    }
 
     pub fn sum(&self) -> N {
         self.slice.sum()
@@ -378,10 +396,6 @@ where
 
     pub fn min(&self) -> N {
         self.slice.min()
-    }
-
-    pub fn len(&self) -> usize {
-        self.slice.len()
     }
 
     pub fn component_add(&mut self, other : &Epoch<N>) {
@@ -404,14 +418,6 @@ where
     pub fn scale_by(&mut self, scalar : N) {
         // self.slice.scale_mut(scalar); // Only available for owned versions
         self.slice.iter_mut().for_each(|n| *n *= scalar );
-    }
-
-    pub fn iter_mut(&'a mut self) -> impl Iterator<Item=&'a mut N> {
-        self.slice.iter_mut()
-    }
-
-    pub fn offset(&self) -> usize {
-        self.offset
     }
 
 }
@@ -635,27 +641,6 @@ where
         self.slice.variance()
     }
 
-    pub fn len(&'a self) -> usize {
-        self.slice.nrows()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item=&N> {
-        self.slice.iter()
-    }
-
-    /// Returns labeled samples, with indices refering to the indices of the subsampled signal.
-    pub fn labeled_samples(&self, spacing : usize) -> impl Iterator<Item=(usize, &N)> {
-        self.iter().step_by(spacing).enumerate()
-    }
-
-    pub fn sub_epoch(&'a self, pos : usize, len : usize) -> Epoch<'a, N> {
-        Self { slice : DVectorSlice::from(&self.slice.as_slice()[pos..pos+len]), offset : self.offset + pos }
-    }
-
-    pub fn offset(&self) -> usize {
-        self.offset
-    }
-
 }
 
 
@@ -664,33 +649,6 @@ fn overlap() {
     let s = Signal::from_iter((0..33).map(|s| s as f64) );
     s.full_epoch().minimally_overlapping_epochs(10);
 }
-
-/*impl<'a, M, N> Downsample<Signal<N>> for Epoch<'a, M>
-where
-    M : Scalar + Copy,
-    N : Scalar + Copy + From<M>
-{
-
-    fn downsample_aliased(&self, dst : &mut Signal<N>) {
-        let step = self.slice.len() / dst.buf.nrows();
-        if step == 1 {
-            sampling::slices::convert_slice(
-                &self.slice.as_slice()[self.offset..],
-                dst.buf.as_mut_slice()
-            );
-        } else {
-            let ncols = dst.buf.ncols();
-            assert!(self.slice.len() / step == dst.buf.nrows(), "Dimension mismatch");
-            sampling::slices::subsample_convert(
-                self.slice.as_slice(),
-                dst.buf.as_mut_slice(),
-                ncols,
-                step,
-                false
-            );
-        }
-    }
-}*/
 
 impl<N> Index<usize> for Signal<N>
 where
@@ -714,6 +672,32 @@ where
     fn index(&self, ix: usize) -> &N {
         &self.slice[ix]
     }
+}
+
+impl<'a, N> Index<usize> for EpochMut<'a, N>
+where
+    N : Scalar
+{
+
+    type Output = N;
+
+    fn index(&self, ix: usize) -> &N {
+        &self.slice[ix]
+    }
+
+}
+
+impl<'a, N> IndexMut<usize> for EpochMut<'a, N>
+where
+    N : Scalar
+{
+
+    // type Output = N;
+
+    fn index_mut(&mut self, ix: usize) -> &mut N {
+        &mut self.slice[ix]
+    }
+
 }
 
 /*impl<'a, N> Index<Range<usize>> for Epoch<'a, N>
@@ -955,5 +939,23 @@ where
         write!(f, "{}", self.buf)
     }
 }
+
+/*impl<'a, N> Borrow<Epoch<'a, N>> for Signal<N> {
+
+    fn borrow(&self) -> &Epoch<'a, N> {
+
+    }
+
+}
+
+pub trait ToOwned {
+
+    type Owned = ;
+
+    fn to_owned(&self) -> Self::Owned;
+
+    fn clone_into(&self, target: &mut Self::Owned) { ... }
+
+}*/
 
 
