@@ -26,5 +26,6 @@ rustdct = "0.7.0"
 rustfft = "6.0.1"
 
 [features]
+default=["mkl", "ipp"]
 mkl=[]
 ipp=[]

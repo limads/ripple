@@ -1,6 +1,6 @@
 use nalgebra::*;
 use nalgebra::storage::*;
-use std::ops::{Index, Mul, Add, AddAssign, MulAssign, Div, SubAssign};
+use std::ops::{Index, Mul, Add, AddAssign, MulAssign, Div, SubAssign, Sub};
 use simba::scalar::SubsetOf;
 use simba::scalar::SupersetOf;
 use std::fmt::Debug;
@@ -55,7 +55,6 @@ where
     pub fn new_constant(n : usize, value : N) -> Self {
         Self{ buf : DVector::from_element(n, value) }
     }
-
 
     pub fn full_epoch(&'a self) -> Epoch<'a, N> {
         Epoch{ slice : self.buf.rows(0, self.buf.nrows()), offset : 0 }
@@ -356,6 +355,11 @@ where
 impl<'a, N> EpochMut<'a, N>
 where
     N : Scalar + Copy {
+
+    pub fn sub_epoch_mut(mut self, pos : usize, len : usize) -> EpochMut<'a, N> {
+        // Self { slice : DVectorSliceMut::from(&mut self.slice.as_mut_slice()[pos..pos+len]), offset : self.offset + pos }
+        unimplemented!()
+    }
 
     pub fn len(&self) -> usize {
         self.slice.len()

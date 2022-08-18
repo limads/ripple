@@ -9,6 +9,7 @@ use std::any::Any;
 use crate::signal::Signal;
 use crate::signal::Epoch;
 use crate::signal::EpochMut;
+use std::mem;
 
 // pub mod iter;
 
@@ -62,6 +63,10 @@ pub trait Convolve
     fn convolve_mut(&self, filter : &Self, conv : Convolution, out : &mut Self::Output);
 
     fn convolve(&self, filter : &Self, conv : Convolution) -> Self::OwnedOutput;
+
+    fn convolve_padded_mut(&self, filter : &Self, conv : Convolution, out : Self::Output);
+
+    fn convolve_padded(&self, filter : &Self, conv : Convolution) -> Self::OwnedOutput;
 
     /*fn convolve(&self, filter : &Self) -> Self::Output {
         let mut out = self.clone();
@@ -163,6 +168,14 @@ where
 
     type OwnedOutput = Signal<S>;
 
+    fn convolve_padded_mut(&self, filter : &Self, conv : Convolution, mut out : Self::Output) {
+        assert!(self.len() == out.len());
+        let sz = self.len() as usize - filter.len() as usize + 1usize;
+        let offset = filter.len() / 2;
+        self.convolve_mut(self, conv, &mut out.sub_epoch_mut(offset, sz));
+    }
+
+    // Requires out.len == self.len-filter.len+1
     fn convolve_mut(&self, filter : &Self, conv : Convolution, out : &mut Self::Output) {
         let input : &[S] = self.as_ref();
         let kernel : &[S] = filter.as_ref();
@@ -175,6 +188,13 @@ where
         let out_sz : usize = self.len() as usize - filter.len() as usize + 1usize;
         let mut out = Signal::<S>::new_constant(out_sz, S::zero());
         self.convolve_mut(filter, conv, &mut out.full_epoch_mut());
+        out
+    }
+
+    fn convolve_padded(&self, filter : &Self, conv : Convolution) -> Self::OwnedOutput {
+        let out_sz : usize = self.len() as usize - filter.len() as usize + 1usize;
+        let mut out = Signal::<S>::new_constant(self.len(), S::zero());
+        self.convolve_mut(filter, conv, &mut out.epoch_mut(filter.len() / 2, out_sz));
         out
     }
 

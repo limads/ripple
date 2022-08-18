@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 #![doc(html_logo_url = "https://raw.githubusercontent.com/limads/ripple/master/assets/ripple-logo.png")]
 
 //! This crate offers a high-level API to for applications that require
@@ -6,6 +8,10 @@
 pub(crate) mod foreign;
 
 pub mod resample;
+
+pub mod rotate;
+
+pub mod reflect;
 
 pub mod conv;
 
@@ -171,4 +177,8 @@ pub(crate) fn display_as_mat(s : &[f32], ncols : usize) -> String {
     format!("{:.4}", DMatrix::from_iterator(ncols, s.len() / ncols, s.iter().cloned()).transpose() )
 }
 
+// pub struct FastFolding { }
+// https://en.wikipedia.org/wiki/Fast_folding_algorithm
 
+// https://en.wikipedia.org/wiki/Goertzel_algorithm
+// pub struct Goertzel { }

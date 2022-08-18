@@ -34,13 +34,13 @@ fn try_link_ipp() {
     }
 }
 
-fn try_link_gsl() {
+/*fn try_link_gsl() {
     if let Ok(_) = env::var("CARGO_FEATURE_GSL") {
         println!("cargo:rustc-link-lib=gsl");
         println!("cargo:rustc-link-lib=gslcblas");
         println!("cargo:rustc-link-lib=m");
     }
-}
+}*/
 
 fn main() {
     try_link_mkl();

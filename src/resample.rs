@@ -34,9 +34,9 @@ pub trait Resample {
 
     type OwnedOutput;
 
-    fn downsample_to(&self, out : &mut Self::Output, down : Downsample, by : usize);
+    fn downsample_to(&self, out : &mut Self::Output, down : Downsample);
 
-    fn upsample_to(&self, out : &mut Self::Output, up : Upsample, by : usize);
+    fn upsample_to(&self, out : &mut Self::Output, up : Upsample);
 
     fn downsample(&self, down : Downsample, by : usize) -> Self::OwnedOutput;
 
@@ -53,7 +53,11 @@ where
 
     type OwnedOutput = Signal<N>;
 
-    fn downsample_to(&self, mut out : &mut Self::Output, down : Downsample, by : usize) {
+    fn downsample_to(&self, mut out : &mut Self::Output, down : Downsample) {
+
+        let by = self.len() / out.len();
+        assert!(out.len() % by == 0);
+
         match down {
             Downsample::Aliased => {
                 // let step = src.slice.len() / self.buf.nrows();
@@ -73,7 +77,6 @@ where
                     false
                 );*/
                 // }
-                assert!(out.len() % by == 0);
 
                 // out.iter_mut().zip(self.iter().step_by(by)).for_each(|(dst, src)| *dst = *src );
 
@@ -90,8 +93,8 @@ where
         }
     }
 
-    fn upsample_to(&self, out : &mut Self::Output, up : Upsample, by : usize) {
-
+    fn upsample_to(&self, out : &mut Self::Output, up : Upsample) {
+        unimplemented!()
     }
 
     fn downsample(&self, down : Downsample, by : usize) -> Self::OwnedOutput {

@@ -45,25 +45,26 @@ where
     f64 : SubsetOf<N>
 {
 
-    pub fn forward_mut(&self, src : &impl AsRef<[N]>, dst : &mut ImageSpectrum<N>) {
+    pub fn forward_mut(&self, src : impl AsRef<[N]>, mut dst : impl AsMut<[Complex<N>]>) {
         self.plan.apply_forward(src.as_ref(), dst.as_mut())
             .map_err(|e| panic!("{}", e) );
     }
 
-    pub fn forward(&self, src : &impl AsRef<[N]>) -> ImageSpectrum<N> {
+    pub fn forward(&self, src : impl AsRef<[N]>) -> Vec<Complex<N>> {
         let zero = N::from(0.0 as f32);
         let (nrows, ncols) = self.plan.shape();
-        let mut dst = ImageSpectrum::new_constant(nrows, ncols, Complex::new(zero.clone(), zero));
+        // let mut dst = ImageSpectrum::new_constant(nrows, ncols, Complex::new(zero.clone(), zero));
+        let mut dst = Vec::from_iter((0..(nrows*ncols)).map(|_| Complex { re : N::from(0.0 as f32), im : N::from(0.0 as f32) } ));
         self.forward_mut(src, &mut dst);
         dst
     }
 
-    pub fn backward_mut(&self, src : &AsRef<[Complex<N>]>, dst : &mut impl AsMut<[N]>) {
+    pub fn backward_mut(&self, src : impl AsRef<[Complex<N>]>, mut dst : impl AsMut<[N]>) {
         self.plan.apply_backward(src.as_ref(), dst.as_mut())
             .map_err(|e| panic!("{}", e) );
     }
 
-    pub fn backward(&self, src : &ImageSpectrum<N>) -> impl AsRef<[N]> {
+    pub fn backward(&self, src : impl AsRef<[Complex<N>]>) -> Vec<N> {
         let (nrows, ncols) = self.plan.shape();
         //let mut dst = Image::new_constant(nrows, ncols, N::from(0.0 as f32));
         let mut dst = Vec::from_iter((0..nrows*ncols).map(|_| N::from(0.0 as f32) ));
@@ -130,6 +131,19 @@ where
     N : Scalar + Copy
 {
     s : DMatrixSlice<'a, N>
+}
+
+pub fn cartesian_interleave_mut<N : Copy + Scalar>(re : &[N], im : &[N], dst : &mut [Complex<N>]) {
+    for (ix, mut px) in dst.as_mut().iter_mut().enumerate() {
+        *px = Complex { re : re[ix], im : im[ix] };
+    }
+}
+
+pub fn cartesian_split_mut<N : Copy + Scalar>(src : &[Complex<N>], re : &mut [N], im : &mut [N]) {
+    for (ix, px) in src.as_ref().iter().enumerate() {
+        re[ix] = px.re;
+        im[ix] = px.im;
+    }
 }
 
 impl<'a, N> ImageSpectrum<N>
