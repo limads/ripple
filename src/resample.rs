@@ -28,32 +28,24 @@ pub enum Upsample {
 
 }
 
-pub trait Resample {
+pub trait Resample<O, M> {
 
-    type Output;
+    fn downsample_to(&self, out : &mut M, down : Downsample);
 
-    type OwnedOutput;
+    fn upsample_to(&self, out : &mut M, up : Upsample);
 
-    fn downsample_to(&self, out : &mut Self::Output, down : Downsample);
+    fn downsample(&self, down : Downsample, by : usize) -> O;
 
-    fn upsample_to(&self, out : &mut Self::Output, up : Upsample);
-
-    fn downsample(&self, down : Downsample, by : usize) -> Self::OwnedOutput;
-
-    fn upsample(&self, up : Upsample, by : usize) -> Self::OwnedOutput;
+    fn upsample(&self, up : Upsample, by : usize) -> O;
 
 }
 
-impl<'a, N> Resample for Epoch<'a, N>
+impl<'a, N> Resample<Signal<N>, EpochMut<'a, N>> for Epoch<'a, N>
 where
     N : Zero + Scalar + Copy + Debug
 {
 
-    type Output = EpochMut<'a, N>;
-
-    type OwnedOutput = Signal<N>;
-
-    fn downsample_to(&self, mut out : &mut Self::Output, down : Downsample) {
+    fn downsample_to(&self, mut out : &mut EpochMut<'a, N>, down : Downsample) {
 
         let by = self.len() / out.len();
         assert!(out.len() % by == 0);
@@ -93,18 +85,18 @@ where
         }
     }
 
-    fn upsample_to(&self, out : &mut Self::Output, up : Upsample) {
+    fn upsample_to(&self, out : &mut EpochMut<'a, N>, up : Upsample) {
         unimplemented!()
     }
 
-    fn downsample(&self, down : Downsample, by : usize) -> Self::OwnedOutput {
+    fn downsample(&self, down : Downsample, by : usize) -> Signal<N> {
         // let mut out = Signal::new_constant(self.len() / by, N::zero());
         // out.full_epoch_mut().downsample_from(self, down, by);
         // out
         unimplemented!()
     }
 
-    fn upsample(&self, up : Upsample, by : usize) -> Self::OwnedOutput {
+    fn upsample(&self, up : Upsample, by : usize) -> Signal<N> {
         //let mut out = Signal::new_constant(self.len() / by, N::zero());
         //out.full_epoch_mut().upsample_from(self, up, by);
         //out

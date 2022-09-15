@@ -356,7 +356,7 @@ impl<'a, N> EpochMut<'a, N>
 where
     N : Scalar + Copy {
 
-    pub fn sub_epoch_mut(mut self, pos : usize, len : usize) -> EpochMut<'a, N> {
+    pub fn sub_epoch_mut(&mut self, pos : usize, len : usize) -> EpochMut<'a, N> {
         // Self { slice : DVectorSliceMut::from(&mut self.slice.as_mut_slice()[pos..pos+len]), offset : self.offset + pos }
         unimplemented!()
     }
