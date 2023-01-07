@@ -283,7 +283,6 @@ where
 
 }
 
-
 impl<N> IntoIterator for Signal<N>
 where
     N : Scalar
@@ -315,8 +314,7 @@ where
 {
 
     pub fn clone_owned(&self) -> Signal<N> {
-        // let v : Vecself.slice.clone()
-        unimplemented!()
+        Signal::from(self.slice.as_slice()[self.offset..].to_vec())
     }
 
     pub fn len(&'a self) -> usize {
